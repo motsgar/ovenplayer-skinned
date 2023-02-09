@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>oven player</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #000;
+        }
+
+        #videoplayer {
+            width: 100%;
+            height: 100%;
+            display: none;
+            --op-accent-color: #2020f7;
+        }
+
+        #offlinebar {
+            width: 100%;
+            height: 30px;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            background-color: #1a202c;
+            border-bottom: 1px solid #00f;
+            padding: 7px 14px !important;
+            font-size: 10.5px;
+            line-height: 1.5;
+            font-family: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            color: #c3dafe
+        }
+
+        .op-spinner-container {
+            display: none !important;
+        }
+
+        .op-setting-item[op-panel-type="source"],
+        .op-setting-item[op-panel-type="speed"] {
+            display: none;
+        }
+
+        .op-live-badge {
+            display: none !important;
+        }
+
+        .ovenplayer>.op-context-panel {
+            display: none !important;
+        }
+
+        .op-message-container {
+            display: none !important;
+        }
+
+        .op-volume-small {
+            margin-top: 0 !important;
+        }
+
+        #background-image {
+            background-image: url('/background.png');
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-position: center;
+            filter: blur(6px);
+            width: 100%;
+            height: 100%;
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="videoplayer">
+        <div id="offlinebar">Stream is offline.</div>
+    </div>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/ovenplayer/dist/ovenplayer.js"></script>
+    <script>
+        const offlinebarEl = document.getElementById('offlinebar');
+        let hasPlayed = false;
+        let bigPlaybuttonEl;
+        const player = OvenPlayer.create('videoplayer', {
+            autoStart: true,
+            showBigPlayButton: false,
+            controls: false,
+            sources: [{
+                label: 'Live',
+                type: 'webrtc',
+                file: 'wss://[server-address]:3334/path/to/stream'
+            }]
+        });
+
+        // Stream events //
+
+        const onStreamStart = () => {
+            player.showControls(false);
+            if (!hasPlayed) bigPlaybuttonEl.style.display = 'block';
+            offlinebarEl.innerText = 'Stream is online.';
+        }
+
+        const onStreamStartPlaying = () => {
+            player.showControls(true);
+            offlinebarEl.style.display = 'none';
+            bigPlaybuttonEl.style.display = 'none';
+            document.getElementById('background-image').style.display = 'none';
+        }
+
+        const onStreamStop = () => {
+            bigPlaybuttonEl.style.display = 'none';
+            offlinebarEl.innerText = 'Stream is offline.';
+        }
+
+        const onStreamStopPlaying = () => {
+            offlinebarEl.style.display = 'block';
+            document.getElementById('background-image').style.display = 'block';
+        }
+
+        const onTryStartPlaying = () => {
+            offlinebarEl.innerText = 'Stream is online. Loading...';
+        }
+
+        // Player functionality //
+
+        let isPlaying = false;
+        let isRunning = false;
+
+        player.on('error', (error) => {
+            if (error.code === 511) {
+                document.querySelector('.op-play-button').click()
+            }
+        });
+        player.on('stateChanged', (state) => {
+            const {
+                prevstate,
+                newstate
+            } = state;
+            document.getElementById('videoplayer').style.display = 'block';
+
+            if (prevstate !== 'paused')
+                switch (newstate) {
+                    case 'playing': {
+                        let wasPlaying = isPlaying;
+                        isPlaying = true;
+                        hasPlayed = true;
+                        if (!wasPlaying) onStreamStartPlaying();
+                        break;
+                    }
+                    case 'loading': {
+                        let wasRunning = isRunning;
+                        isRunning = true;
+                        if (!wasRunning) onStreamStart();
+                        if (hasPlayed) onTryStartPlaying();
+                        break;
+                    }
+                    default: {
+                        break;
+                    }
+                }
+            if (newstate === 'error') {
+                player.showControls(false);
+
+                if (isRunning) onStreamStop();
+                if (isPlaying) onStreamStopPlaying();
+                isPlaying = false;
+                isRunning = false;
+            }
+        });
+        setInterval(() => {
+            if (player.getState() === 'error') {
+                document.querySelector('.op-play-button').click()
+            }
+        }, 500);
+
+        player.on('ready', () => {
+            document.querySelector('.op-media-element-container').insertAdjacentHTML('beforebegin', '<img id="background-image" />');
+
+        })
+
+        document.querySelector('.op-helpers-container').insertAdjacentHTML('beforeend', '<div class="op-bigbutton-container "><i class="op-bigbutton op-con op-play-big"></i></div>');
+        document.querySelector('.op-media-element-container').insertAdjacentHTML('beforeend', '<img id="background-image" />');
+        document.getElementById('videoplayer').appendChild(offlinebarEl);
+        bigPlaybuttonEl = document.querySelector('.op-bigbutton-container');
+        bigPlaybuttonEl.style.display = 'none';
+
+        bigPlaybuttonEl.addEventListener('click', () => {
+            document.querySelector('.op-play-button').click()
+            document.querySelector('.op-play-button').click() // This is not a typo, for some reason it sometimes needs 2 clicks (first loads, then plays)
+            onTryStartPlaying();
+        });
+    </script>
+</body>
+
+</html>
